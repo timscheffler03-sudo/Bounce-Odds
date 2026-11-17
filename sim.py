@@ -116,6 +116,9 @@ class Mode:
     def win_colors(self):
         return list(self.pal) + [GOLD]
 
+    def prompt(self):
+        return "YES or NO?", [("Comment your guess below!", (1, 1, 1))]
+
     def ev(self, kind, val=0.0):
         self.events.append((kind, val))
 
@@ -426,14 +429,34 @@ class VersusMode(Mode):
         self.cap = int(self.target * 1.6)
         self.teams = list(rng.choice(TEAM_PAIRS)); rng.shuffle(self.teams)
         a, b = self.teams[0][0], self.teams[1][0]
-        self.title = rng.choice([f"{a} vs {b}", f"{a} or {b}? Pick now!", "Which color takes over?", f"{a} vs {b} – who wins?"])
-        self.sub = f"first to {self.target} wins – hits convert"
         self.leader = 0
         self.changes = 0
+        # Sägeblätter: zerstören jeden Ball, den sie berühren
+        k = rng.choice([1, 2, 2, 3])
+        self.saws = []
+        for j in range(k):
+            orb = 0.0 if (k == 1 and rng.random() < 0.4) else rng.uniform(150, 290)
+            self.saws.append((orb, rng.choice([-1, 1]) * rng.uniform(0.5, 1.1), j * 2 * math.pi / k + rng.uniform(-0.3, 0.3),
+                              rng.uniform(42, 60) if orb else 75.0))
+        self.killed = 0
+        self.flashes = []
+        self.sub = f"first to {self.target} wins – saws destroy balls"
+        self.title = rng.choice(self.title_opts(a, b))
+
+    def title_opts(self, a, b):
+        return [f"{a} vs {b}", f"{a} or {b}? Pick now!", "Which color survives the saws?", f"{a} vs {b} – who wins?",
+                f"{len(self.saws)} saw{'s' if len(self.saws) > 1 else ''} – {a} or {b}?"]
+
+    def saw_pos(self, t):
+        return [(CX + o * math.cos(p + wv * t), CY + o * math.sin(p + wv * t), r) for o, wv, p, r in self.saws]
 
     def start(self, w):
-        w.spawn(CX - 150, CY, self.rng.uniform(300, 500), self.rng.uniform(-400, 400), 11, 0, 0)
-        w.spawn(CX + 150, CY, -self.rng.uniform(300, 500), self.rng.uniform(-400, 400), 11, 0, 1)
+        for k in range(2):
+            a = self.rng.uniform(0, 2 * math.pi)
+            sx, sy = CX + (-1 if k == 0 else 1) * 360, CY + self.rng.uniform(-80, 80)
+            m = -1 if k else 1
+            w.spawn(sx, sy, m * math.cos(a) * 450, math.sin(a) * 450, 11, 0, k)
+            w.spawn(sx, sy + 30, -m * math.cos(a) * 450, -math.sin(a) * 450, 11, 0, k)
 
     def colliders(self, t):
         return [], [], [(CX, CY, self.R, 14, 0.0, 0.0)]
@@ -441,14 +464,27 @@ class VersusMode(Mode):
     def rules(self, w, dt_frame):
         n = w.n
         if self.outcome is None and n < self.cap:
-            for i in np.where((w.hit[:n] > 0) & (w.cool[:n] <= 0))[0]:
+            cand = list(np.where((w.hit[:n] > 0) & (w.cool[:n] <= 0))[0]); self.rng.shuffle(cand)
+            for i in cand:
                 if w.n >= self.cap: break
                 j = w.split(i, self.rng)
                 if j >= 0:
                     w.cool[i] = 0.9; w.cool[j] = 0.9; self.ev('pop', w.x[i])
         w.hit[:n] = 0
         n = w.n
-        red = int((w.team[:n] == 0).sum()); blue = n - red
+        t = len(self.hist) / FPS
+        if t > 4.0 and n >= 40: self.armed = True
+        for sx, sy, sr in (self.saw_pos(t) if getattr(self, 'armed', False) else []):
+            dead = np.where(w.alive[:n] & (np.hypot(w.x[:n] - sx, w.y[:n] - sy) < sr + w.rad[:n]))[0]
+            for i in dead[:40]:
+                w.alive[i] = False
+                self.flashes.append([w.x[i], w.y[i], 0, int(w.team[i])])
+            if len(dead):
+                self.killed += len(dead); self.ev('crunch', len(dead))
+        self.flashes = [f for f in self.flashes if f[2] < 10][-120:]
+        for f in self.flashes: f[2] += 1
+        alive = w.alive[:n]
+        red = int(((w.team[:n] == 0) & alive).sum()); blue = int(((w.team[:n] == 1) & alive).sum())
         self.red, self.blue = red, blue
         lead = 0 if red > blue else (1 if blue > red else self.leader)
         if lead != self.leader and n > 6:
@@ -469,6 +505,26 @@ class VersusMode(Mode):
 
     def draw(self, ctx, t):
         ring_draw(ctx, CX, CY, self.R, 0, 0, (0.75, 0.75, 0.85))
+        t = len(self.hist) / FPS
+        grow = 1.0 if getattr(self, 'armed', False) else 0.35
+        for sx, sy, sr in self.saw_pos(t):
+            sr *= grow
+            rot = t * 9
+            for wdt, al in ((sr * 0.9, 0.08), (sr * 0.45, 0.16)):
+                ctx.new_path(); ctx.set_source_rgba(1.0, 0.25, 0.25, al); ctx.arc(sx, sy, sr + wdt / 2, 0, 2 * math.pi); ctx.fill()
+            ctx.new_path(); ctx.set_source_rgb(0.80, 0.82, 0.88)
+            teeth = 14
+            for k in range(teeth * 2):
+                a = rot + k * math.pi / teeth
+                rr = sr if k % 2 == 0 else sr * 0.78
+                (ctx.move_to if k == 0 else ctx.line_to)(sx + rr * math.cos(a), sy + rr * math.sin(a))
+            ctx.close_path(); ctx.fill()
+            ctx.new_path(); ctx.set_source_rgb(0.95, 0.25, 0.25); ctx.arc(sx, sy, sr * 0.55, 0, 2 * math.pi); ctx.fill()
+            ctx.new_path(); ctx.set_source_rgb(0.15, 0.15, 0.2); ctx.arc(sx, sy, sr * 0.18, 0, 2 * math.pi); ctx.fill()
+        for x, y, age, tm in self.flashes:
+            col = self.teams[tm][1]
+            ctx.new_path(); ctx.set_line_width(4); ctx.set_source_rgba(*col, 1 - age / 10)
+            ctx.arc(x, y, 8 + age * 3.5, 0, 2 * math.pi); ctx.stroke()
 
     def hud(self, ctx):
         tot = max(1, self.red + self.blue)
@@ -477,6 +533,11 @@ class VersusMode(Mode):
         ctx.new_path(); ctx.set_source_rgb(*cb); ctx.rectangle(90 + 900 * self.red / tot, 1600, 900 * self.blue / tot, 34); ctx.fill()
         text(ctx, f"{na} {self.red}", 280, 1710, 64, ca, maxw=420)
         text(ctx, f"{nb} {self.blue}", 800, 1710, 64, cb, maxw=420)
+        text(ctx, f"destroyed: {fmt(self.killed)}", W / 2, 1800, 40, (0.95, 0.40, 0.40), bold=False)
+
+    def prompt(self):
+        (na, ca), (nb, cb) = self.teams
+        return "Which color wins?", [(na, ca), (" or ", (1, 1, 1)), (nb, cb), ("? Comment below!", (1, 1, 1))]
 
     def end_text(self):
         k = 0 if self.outcome == 'red' else 1
@@ -489,7 +550,7 @@ class VersusMode(Mode):
     def drama(self, secs):
         if self.outcome is None or secs < 18 or secs > 52:
             return -1
-        return 0.5 + 0.25 * min(self.changes, 6)
+        return (0.3 if self.changes == 0 else 0.8) + 0.25 * min(self.changes, 6) + min(self.killed, 400) / 800
 
 
 class CupMode(Mode):
@@ -624,6 +685,23 @@ def glow_line(ctx, lines, col, lw=16):
         for (a, b) in lines:
             ctx.move_to(*a); ctx.line_to(*b)
         ctx.stroke()
+
+
+def prompt_overlay(ctx, head, parts, alpha, y=470):
+    ctx.save()
+    ctx.new_path(); ctx.set_source_rgba(0.02, 0.02, 0.05, 0.82 * alpha)
+    ctx.rectangle(40, y - 105, W - 80, 230); ctx.fill()
+    ctx.push_group()
+    text(ctx, head, W / 2, y - 20, 88, (1, 1, 1))
+    ctx.select_font_face(FONT, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD); ctx.set_font_size(56)
+    tot = sum(ctx.text_extents(p)[4] for p, _ in parts)
+    sc = min(1.0, 960 / tot); ctx.set_font_size(56 * sc)
+    tot = sum(ctx.text_extents(p)[4] for p, _ in parts)
+    x = W / 2 - tot / 2
+    for p, col in parts:
+        ctx.move_to(x, y + 70); ctx.set_source_rgb(*col); ctx.show_text(p); x += ctx.text_extents(p)[4]
+    ctx.pop_group_to_source(); ctx.paint_with_alpha(alpha)
+    ctx.restore()
 
 
 def counter(ctx, s, prog, danger=False, y=1640):
@@ -784,6 +862,8 @@ def run(mode_name, seed, out=None, dry=False):
                         mix(audio, tone(f, 0.06, 70, 0.22 / (1 + cnt / 250), 0.1), t + k * 0.012)
                 for (_, v) in [e for e in mode.events if e[0] == 'plop'][:1]:
                     mix(audio, tone(140, 0.12, 30, min(0.3, 0.12 + 0.02 * v), 0.3), t)
+                for (_, v) in [e for e in mode.events if e[0] == 'crunch'][:1]:
+                    mix(audio, burst(0.07, min(0.22, 0.08 + 0.02 * v), seed=frame) + tone(110, 0.07, 40, 0.1, 0.5)[:int(SR * 0.07)], t)
                 for (_, f) in [e for e in mode.events if e[0] == 'ding'][:1]:
                     mix(audio, tone(f, 0.22, 14, 0.16, 0.3), t)
             # Bild
@@ -793,6 +873,9 @@ def run(mode_name, seed, out=None, dry=False):
             mode.draw(ctx, t)
             draw_balls(ctx, w, mode)
             mode.hud(ctx)
+            if t < 3.2 and end_frame is None:
+                head, parts = mode.prompt()
+                prompt_overlay(ctx, head, parts, min(1.0, (3.2 - t) / 0.4))
             if end_frame is not None and mode.outcome != 'timeout':
                 k = min(1.0, (frame - end_frame) / 8)
                 msg, good = mode.end_text()
