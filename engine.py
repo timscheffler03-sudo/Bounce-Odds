@@ -85,7 +85,7 @@ def substep(x, y, vx, vy, rad, alive, hit, n, dt, g, rest,
                         if -vn > 120.0:
                             hit[i] += 1
 
-    if not ball_ball:
+    if ball_ball == 0:
         return 0
     # --- Ball gegen Ball (Raster) ---
     cell = 0.0
@@ -127,7 +127,13 @@ def substep(x, y, vx, vy, rad, alive, hit, n, dt, g, rest,
                         dx = x[j] - x[i]; dy = y[j] - y[i]
                         md = rad[i] + rad[j]
                         d2 = dx * dx + dy * dy
-                        if d2 < md * md and d2 > 1e-9:
+                        if d2 < md * md and d2 > 1e-9 and ball_ball == 2:
+                            # nur Berührung erkennen, kein Abprallen (Bälle fliegen durcheinander durch)
+                            d = math.sqrt(d2)
+                            rv = ((vx[j] - vx[i]) * dx + (vy[j] - vy[i]) * dy) / d
+                            if team[i] != team[j] and nconv < conv.shape[0] and rv < 0:
+                                conv[nconv, 0] = i; conv[nconv, 1] = j; nconv += 1
+                        elif d2 < md * md and d2 > 1e-9:
                             d = math.sqrt(d2)
                             nx = dx / d; ny = dy / d
                             ov = (md - d) * 0.5

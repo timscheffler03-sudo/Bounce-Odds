@@ -87,7 +87,7 @@ def fmt(v):
 class Mode:
     gravity = 900.0
     rest = 1.0
-    ball_ball = True
+    ball_ball = 0          # 0 = Bälle fliegen durcheinander, 1 = prallen ab, 2 = nur Berührung erkennen
     vmin, vmax = 0.0, 2600.0
     maxdur = 55.0
 
@@ -132,11 +132,11 @@ class RingMode(Mode):
     def __init__(self, rng):
         super().__init__(rng)
         self.R = 470.0
-        self.target = rng.choice([750, 1000, 1000, 1200])
-        self.gap = math.radians(rng.uniform(13, 20))
+        self.target = rng.choice([800, 1000, 1200, 1500])
+        self.gap = math.radians(rng.uniform(30, 45))
         self.gw = rng.choice([-1, 1]) * rng.uniform(0.6, 1.0)
         self.ga0 = -math.pi / 2 + rng.uniform(-0.5, 0.5)
-        self.cd = rng.uniform(0.75, 1.05)
+        self.cd = rng.uniform(1.0, 1.4)
         self.limit = rng.choice([35, 40, 45])
         self.title = rng.choice([f"{fmt(self.target)} balls in {self.limit} seconds?", f"Can it hit {fmt(self.target)} before time runs out?",
                                  f"Every bounce = new ball. {fmt(self.target)} in {self.limit}s?"])
@@ -213,7 +213,7 @@ class HexMode(RingMode):
         self.R = 480.0
         self.wr = rng.choice([-1, 1]) * rng.uniform(0.45, 0.8)
         self.open = rng.randrange(6)
-        self.hole = rng.uniform(0.22, 0.32)
+        self.hole = rng.uniform(0.4, 0.55)
         self.sub = "the hexagon spins – one side has a hole"
         self.title = self.rng.choice([f"{fmt(self.target)} balls in {self.limit} seconds?", f"Can the hexagon hold {fmt(self.target)} balls?",
                                       f"{fmt(self.target)} balls before the timer ends?"])
@@ -327,7 +327,7 @@ class PlinkoMode(Mode):
     name = 'plinko'
     gravity = 1700.0
     rest = 0.55
-    ball_ball = False
+    ball_ball = 0
 
     def __init__(self, rng):
         super().__init__(rng)
@@ -419,13 +419,14 @@ class PlinkoMode(Mode):
 class VersusMode(Mode):
     """4 Rot gegen Blau: Abprall teilt das eigene Team, Zusammenstöße bekehren."""
     name = 'versus'
+    ball_ball = 2
     gravity = 0.0
     vmin, vmax = 430.0, 800.0
 
     def __init__(self, rng):
         super().__init__(rng)
         self.R = 470.0
-        self.target = rng.choice([300, 400, 400])
+        self.target = rng.choice([400, 500, 500])
         self.cap = int(self.target * 1.6)
         self.teams = list(rng.choice(TEAM_PAIRS)); rng.shuffle(self.teams)
         a, b = self.teams[0][0], self.teams[1][0]
@@ -469,7 +470,7 @@ class VersusMode(Mode):
                 if w.n >= self.cap: break
                 j = w.split(i, self.rng)
                 if j >= 0:
-                    w.cool[i] = 0.9; w.cool[j] = 0.9; self.ev('pop', w.x[i])
+                    w.cool[i] = 1.3; w.cool[j] = 1.3; self.ev('pop', w.x[i])
         w.hit[:n] = 0
         n = w.n
         # Kein Kreisen am Rand: Bälle, die am Rand entlang gleiten, werden zurück nach innen gelenkt
@@ -511,7 +512,7 @@ class VersusMode(Mode):
     def conversions(self, w, pairs):
         for i, j in pairs:
             si = math.hypot(w.vx[i], w.vy[i]); sj = math.hypot(w.vx[j], w.vy[j])
-            if self.rng.random() < 0.35:
+            if self.rng.random() < 0.18:
                 if si > sj: w.team[j] = w.team[i]
                 else: w.team[i] = w.team[j]
                 self.ev('ding', 700)
@@ -569,6 +570,7 @@ class VersusMode(Mode):
 class CupMode(Mode):
     """6 Becher füllen: Bälle teilen sich am Brett, der Boden hat Löcher."""
     name = 'cup'
+    ball_ball = 1          # Becher muss sich stapeln
     gravity = 1500.0
     rest = 0.6
     maxdur = 50.0
