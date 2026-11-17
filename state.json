@@ -1,14 +1,16 @@
 {
- "i": 2,
- "n": 2,
- "win_next": true,
+ "i": 3,
+ "n": 3,
+ "win_next": false,
  "posted": {
   "2026-11-17": [
-   13
+   13,
+   19
   ]
  },
  "recent": [
   "versus",
-  "versus"
+  "versus",
+  "rings"
  ]
 }
