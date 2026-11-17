@@ -21,6 +21,10 @@ PALETTES = [
     [(0.30, 0.95, 0.95), (0.55, 0.60, 1.0), (0.95, 0.45, 0.95), (1.0, 0.85, 0.35), (0.50, 1.0, 0.60)],
 ]
 RED, BLUE = (0.98, 0.38, 0.38), (0.33, 0.62, 1.0)
+TEAM_PAIRS = [(('RED', RED), ('BLUE', BLUE)), (('GREEN', (0.35, 0.92, 0.50)), ('PURPLE', (0.72, 0.48, 1.0))),
+              (('ORANGE', (1.0, 0.62, 0.22)), ('CYAN', (0.25, 0.88, 0.95))), (('PINK', (1.0, 0.45, 0.75)), ('YELLOW', (1.0, 0.88, 0.30)))]
+BGS = [(0.035, 0.035, 0.065), (0.03, 0.045, 0.07), (0.055, 0.035, 0.06), (0.03, 0.05, 0.05), (0.045, 0.04, 0.035)]
+GREEN, GOLD = (0.40, 0.95, 0.55), (1.0, 0.82, 0.30)
 
 
 # ------------------------------------------------------------------ Welt
@@ -109,6 +113,9 @@ class Mode:
         f[lo] = self.vmin / v[lo]; f[hi] = self.vmax / v[hi]
         w.vx[:n] *= f; w.vy[:n] *= f
 
+    def win_colors(self):
+        return list(self.pal) + [GOLD]
+
     def ev(self, kind, val=0.0):
         self.events.append((kind, val))
 
@@ -127,8 +134,9 @@ class RingMode(Mode):
         self.gw = rng.choice([-1, 1]) * rng.uniform(0.6, 1.0)
         self.ga0 = -math.pi / 2 + rng.uniform(-0.5, 0.5)
         self.cd = rng.uniform(0.75, 1.05)
-        self.limit = 40
-        self.title = f"{fmt(self.target)} balls in {self.limit} seconds?"
+        self.limit = rng.choice([35, 40, 45])
+        self.title = rng.choice([f"{fmt(self.target)} balls in {self.limit} seconds?", f"Can it hit {fmt(self.target)} before time runs out?",
+                                 f"Every bounce = new ball. {fmt(self.target)} in {self.limit}s?"])
         self.sub = "every bounce splits a ball – the gap spins"
         self.peak = 1
 
@@ -204,7 +212,8 @@ class HexMode(RingMode):
         self.open = rng.randrange(6)
         self.hole = rng.uniform(0.22, 0.32)
         self.sub = "the hexagon spins – one side has a hole"
-        self.title = f"{fmt(self.target)} balls in {self.limit} seconds?"
+        self.title = self.rng.choice([f"{fmt(self.target)} balls in {self.limit} seconds?", f"Can the hexagon hold {fmt(self.target)} balls?",
+                                      f"{fmt(self.target)} balls before the timer ends?"])
 
     def corners(self, t):
         a0 = self.wr * t
@@ -255,7 +264,7 @@ class RingsMode(Mode):
         self.a0 = [rng.uniform(0, 2 * math.pi) for _ in self.radii]
         self.cap = rng.choice([6, 10, 16])
         self.limit = 35
-        self.title = f"Can a ball escape in {self.limit}s?"
+        self.title = rng.choice([f"Can a ball escape in {self.limit}s?", "Will it break out of all 4 rings?", "Can ONE ball escape 4 spinning rings?"])
         self.sub = "4 spinning rings – every bounce splits"
         self.layer = 0
         self.cols = [(0.35, 0.65, 0.98), (0.40, 0.88, 0.62), (0.99, 0.75, 0.30), (0.98, 0.42, 0.42)]
@@ -336,7 +345,7 @@ class PlinkoMode(Mode):
                     self.pegs.append((x, y, 7.0))
         self.queue = rng.choice([4, 6, 8])
         self.spawn_t = 0.0
-        self.title = f"Will it reach {fmt(self.target)}?"
+        self.title = rng.choice([f"Will it reach {fmt(self.target)}?", f"x2 or x0 – can it hit {fmt(self.target)}?", f"{fmt(self.target)} balls or nothing?"])
         self.sub = "x2 doubles – x0 deletes"
         self.flash = {}
 
@@ -415,7 +424,9 @@ class VersusMode(Mode):
         self.R = 470.0
         self.target = rng.choice([300, 400, 400])
         self.cap = int(self.target * 1.6)
-        self.title = "RED vs BLUE"
+        self.teams = list(rng.choice(TEAM_PAIRS)); rng.shuffle(self.teams)
+        a, b = self.teams[0][0], self.teams[1][0]
+        self.title = rng.choice([f"{a} vs {b}", f"{a} or {b}? Pick now!", "Which color takes over?", f"{a} vs {b} – who wins?"])
         self.sub = f"first to {self.target} wins – hits convert"
         self.leader = 0
         self.changes = 0
@@ -461,13 +472,19 @@ class VersusMode(Mode):
 
     def hud(self, ctx):
         tot = max(1, self.red + self.blue)
-        ctx.new_path(); ctx.set_source_rgb(*RED); ctx.rectangle(90, 1600, 900 * self.red / tot, 34); ctx.fill()
-        ctx.new_path(); ctx.set_source_rgb(*BLUE); ctx.rectangle(90 + 900 * self.red / tot, 1600, 900 * self.blue / tot, 34); ctx.fill()
-        text(ctx, f"RED {self.red}", 280, 1710, 64, RED)
-        text(ctx, f"BLUE {self.blue}", 800, 1710, 64, BLUE)
+        (na, ca), (nb, cb) = self.teams
+        ctx.new_path(); ctx.set_source_rgb(*ca); ctx.rectangle(90, 1600, 900 * self.red / tot, 34); ctx.fill()
+        ctx.new_path(); ctx.set_source_rgb(*cb); ctx.rectangle(90 + 900 * self.red / tot, 1600, 900 * self.blue / tot, 34); ctx.fill()
+        text(ctx, f"{na} {self.red}", 280, 1710, 64, ca, maxw=420)
+        text(ctx, f"{nb} {self.blue}", 800, 1710, 64, cb, maxw=420)
 
     def end_text(self):
-        return ("RED WINS!", 'red') if self.outcome == 'red' else ("BLUE WINS!", 'blue')
+        k = 0 if self.outcome == 'red' else 1
+        return (f"{self.teams[k][0]} WINS!", True)
+
+    def win_colors(self):
+        c = self.teams[0 if self.outcome == 'red' else 1][1]
+        return [c, tuple(min(1, v * 0.6 + 0.4) for v in c), tuple(v * 0.75 for v in c), (1, 1, 1)]
 
     def drama(self, secs):
         if self.outcome is None or secs < 18 or secs > 52:
@@ -493,7 +510,7 @@ class CupMode(Mode):
         self.full_line = 1240.0
         self.mult = rng.choice([4, 4, 5])
         self.after = 0.0
-        self.title = "Will the cup fill up?"
+        self.title = rng.choice(["Will the cup fill up?", "Can it fill the leaky cup?", "Full cup or fail?"])
         self.sub = "the paddle splits balls – the floor leaks"
         self.spawn_t = 0.0
         self.fill = 0.0
@@ -623,7 +640,7 @@ def draw_balls(ctx, w, mode):
         if isinstance(mode, VersusMode):
             if c > 1: break
             idx = np.where(w.alive[:n] & (w.team[:n] == c))[0]
-            col = RED if c == 0 else BLUE
+            col = mode.teams[c][1]
         else:
             idx = np.where(w.alive[:n] & (w.col[:n] == c))[0]
             col = mode.pal[c % len(mode.pal)]
@@ -656,11 +673,53 @@ def tone(freq, dur, decay, vol=0.5, harm=0.25):
     return (np.sin(2 * np.pi * freq * t) + harm * np.sin(4 * np.pi * freq * t)) * np.exp(-t * decay) * vol
 
 
+def horn(f0, dur, vol=0.5):
+    t = np.arange(int(SR * dur)) / SR
+    f = f0 * (0.92 + 0.08 * np.minimum(t / 0.06, 1)) * (1 + 0.012 * np.sin(2 * np.pi * 7 * t))
+    ph = np.cumsum(2 * np.pi * f / SR)
+    w = sum(np.sin(k * ph) / k for k in range(1, 10))
+    w = np.convolve(w, np.ones(4) / 4, 'same')
+    env = np.minimum(t / 0.015, 1) * np.minimum((dur - t) / 0.06, 1)
+    return w * env * vol * 0.55
+
+
+def burst(dur=0.12, vol=0.35, seed=0):
+    r = np.random.default_rng(seed)
+    t = np.arange(int(SR * dur)) / SR
+    n = np.convolve(r.standard_normal(len(t)), np.ones(6) / 6, 'same')
+    return n * np.exp(-t * 30) * vol
+
+
 def mix(audio, s, t0):
     i0 = int(t0 * SR)
     if i0 >= len(audio): return
     e = min(len(audio), i0 + len(s))
     audio[i0:e] += s[:e - i0]
+
+
+# ------------------------------------------------------------------ Konfetti
+class Confetti:
+    def __init__(self, rng, cols, n=150):
+        P = []
+        for side in (0, 1):
+            for _ in range(n):
+                sx = -10 if side == 0 else W + 10
+                P.append([sx, rng.uniform(1250, 1650), (1 if side == 0 else -1) * rng.uniform(500, 1500), -rng.uniform(1300, 2500),
+                          rng.uniform(0, 6.28), rng.uniform(-12, 12), rng.uniform(4, 9), rng.choice(cols), rng.uniform(10, 18), rng.uniform(16, 28)])
+        self.p = P
+
+    def step(self, dt):
+        for q in self.p:
+            q[2] *= 0.985; q[3] = min(q[3] + 1500 * dt, 260 + 60 * math.sin(q[4] * 3))
+            q[0] += q[2] * dt + math.sin(q[4] * 2) * 1.5; q[1] += q[3] * dt
+            q[4] += q[5] * dt
+
+    def draw(self, ctx):
+        for x, y, _, _, a, _, fl, col, w_, h_ in self.p:
+            if y > H + 40: continue
+            ctx.save(); ctx.translate(x, y); ctx.rotate(a)
+            ctx.scale(1, max(0.15, abs(math.cos(a * fl * 0.3))))
+            ctx.new_path(); ctx.set_source_rgb(*col); ctx.rectangle(-w_ / 2, -h_ / 2, w_, h_); ctx.fill(); ctx.restore()
 
 
 # ------------------------------------------------------------------ Ablauf
@@ -672,6 +731,8 @@ def run(mode_name, seed, out=None, dry=False):
     dt = 1.0 / (FPS * SUB)
     frame = 0
     end_frame = None
+    confetti = None
+    bg = rng.choice(BGS)
     audio = np.zeros(int((mode.maxdur + 5) * SR)) if not dry else None
     ff = surf = ctx = None
     if not dry:
@@ -682,7 +743,7 @@ def run(mode_name, seed, out=None, dry=False):
         t = frame / FPS
         mode.events = []
         allpairs = []
-        for s in range(SUB):
+        for s in range(SUB if end_frame is None else 0):   # nach dem Ende: alles einfrieren
             segs, pegs, rings = mode.colliders(t + s * dt)
             sa, ns = seg_arr(segs); pa, npg = seg_arr([(p[0], p[1], p[2]) for p in pegs]); ra, nr = ring_arr(rings)
             nconv = substep(w.x, w.y, w.vx, w.vy, w.rad, w.alive, w.hit, w.n, dt, mode.gravity, mode.rest,
@@ -690,11 +751,12 @@ def run(mode_name, seed, out=None, dry=False):
             if nconv:
                 allpairs.extend([tuple(p) for p in w.conv[:nconv]])
             w.cool[:w.n] -= dt
-        mode.speed_clamp(w)
-        if allpairs and hasattr(mode, 'conversions'):
-            mode.conversions(w, allpairs)
-        mode.rules(w, 1.0 / FPS)
-        w.compact()
+        if end_frame is None:
+            mode.speed_clamp(w)
+            if allpairs and hasattr(mode, 'conversions'):
+                mode.conversions(w, allpairs)
+            mode.rules(w, 1.0 / FPS)
+            w.compact()
         w.tx[:w.n, 1:] = w.tx[:w.n, :-1]; w.ty[:w.n, 1:] = w.ty[:w.n, :-1]
         w.tx[:w.n, 0] = w.x[:w.n]; w.ty[:w.n, 0] = w.y[:w.n]
         if mode.outcome is None and t >= mode.maxdur:
@@ -703,22 +765,29 @@ def run(mode_name, seed, out=None, dry=False):
             end_frame = frame
             if not dry:
                 _, good = mode.end_text()
-                notes = [523, 659, 784, 1047] if good is not False else [523, 440, 349, 262]
-                for k, f in enumerate(notes):
-                    mix(audio, tone(f, 0.35, 6, 0.6), t + k * 0.12)
+                if good and mode.outcome != 'timeout':
+                    mix(audio, burst(seed=seed), t); mix(audio, burst(seed=seed + 1), t + 0.03)
+                    mix(audio, horn(370, 0.16), t + 0.05)
+                    mix(audio, horn(440, 0.75), t + 0.28)
+                    confetti = Confetti(rng, mode.win_colors())
+                else:
+                    for k, f in enumerate([392, 370, 349, 262]):
+                        mix(audio, tone(f, 0.45 if k == 3 else 0.3, 5, 0.3), t + k * 0.28)
         if not dry:
             # Töne
-            pops = [e for e in mode.events if e[0] == 'pop'][:5]
-            for k, (_, xv) in enumerate(pops):
+            if end_frame is None:   # nach dem Ende: Spielgeräusche aus
+                pops = [e for e in mode.events if e[0] == 'pop']
                 cnt = getattr(mode, 'count', w.n)
-                f = 420 + 380 * min(1.0, math.log(max(cnt, 1) + 1) / 6.5) + 120 * ((xv - CX) / 540)
-                mix(audio, tone(f, 0.07, 55, 0.45 / (1 + 0.3 * k)), t + k * 0.006)
-            for (_, v) in [e for e in mode.events if e[0] == 'plop'][:1]:
-                mix(audio, tone(150, 0.12, 30, min(0.9, 0.3 + 0.08 * v), 0.4), t)
-            for (_, f) in [e for e in mode.events if e[0] == 'ding'][:3]:
-                mix(audio, tone(f, 0.25, 12, 0.35, 0.5), t)
+                if pops and (len(pops) <= 2 or rng.random() < 0.55):
+                    for k, (_, xv) in enumerate(pops[:2]):
+                        f = 380 + 220 * min(1.0, math.log(max(cnt, 1) + 1) / 7) + 60 * ((xv - CX) / 540)
+                        mix(audio, tone(f, 0.06, 70, 0.22 / (1 + cnt / 250), 0.1), t + k * 0.012)
+                for (_, v) in [e for e in mode.events if e[0] == 'plop'][:1]:
+                    mix(audio, tone(140, 0.12, 30, min(0.3, 0.12 + 0.02 * v), 0.3), t)
+                for (_, f) in [e for e in mode.events if e[0] == 'ding'][:1]:
+                    mix(audio, tone(f, 0.22, 14, 0.16, 0.3), t)
             # Bild
-            ctx.set_source_rgb(0.035, 0.035, 0.065); ctx.paint()
+            ctx.set_source_rgb(*bg); ctx.paint()
             text(ctx, mode.title, W / 2, 250, 74 if len(mode.title) < 26 else 64, (1, 1, 1))
             text(ctx, mode.sub, W / 2, 320, 38, (0.68, 0.68, 0.78), bold=False)
             mode.draw(ctx, t)
@@ -727,12 +796,14 @@ def run(mode_name, seed, out=None, dry=False):
             if end_frame is not None and mode.outcome != 'timeout':
                 k = min(1.0, (frame - end_frame) / 8)
                 msg, good = mode.end_text()
-                col = RED if good == 'red' else BLUE if good == 'blue' else ((0.40, 0.95, 0.55) if good else (0.98, 0.38, 0.38))
+                col = (mode.win_colors()[0] if isinstance(mode, VersusMode) else GREEN) if good else (0.98, 0.38, 0.38)
                 ctx.save(); ctx.translate(W / 2, 470); ctx.scale(0.5 + 0.5 * k, 0.5 + 0.5 * k)
                 text(ctx, msg, 0, 0, 110, col); ctx.restore()
+            if confetti:
+                confetti.step(1 / FPS); confetti.draw(ctx)
             ff.stdin.write(surf.get_data())
         frame += 1
-        if end_frame is not None and frame - end_frame > int(2.8 * FPS):
+        if end_frame is not None and frame - end_frame > int(3.4 * FPS):
             break
     secs = round(frame / FPS, 1)
     score = mode.drama(secs) if mode.outcome != 'timeout' else -1
@@ -741,8 +812,7 @@ def run(mode_name, seed, out=None, dry=False):
     if not dry:
         ff.stdin.close(); ff.wait()
         a = audio[:int(frame / FPS * SR)]
-        pk = np.max(np.abs(a)) or 1
-        a = np.tanh(a / pk * 1.6) * 0.8
+        a = np.tanh(a * 1.1) * 0.75
         with wave.open(out + '.a.wav', 'wb') as wf:
             wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SR)
             wf.writeframes((a * 32767).astype(np.int16).tobytes())

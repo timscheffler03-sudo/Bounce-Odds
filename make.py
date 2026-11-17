@@ -76,7 +76,9 @@ def main():
     if env('AUTO') == '1' and slot is None:
         log('Kein Slot fällig –', now.strftime('%H:%M'))
         return
-    mode = env('MODE') or ORDER[st['i'] % len(ORDER)]
+    recent = st.get('recent', [])
+    free = [m for m in ORDER if m not in recent[-3:]]
+    mode = env('MODE') or random.choice(free)
     log('Modus:', mode, '| Slot:', slot)
     cands = pick(mode)
     if not cands:
@@ -97,6 +99,7 @@ def main():
         return
     post(out, title, desc)
     st['i'] += 1
+    st['recent'] = (recent + [mode])[-6:]
     st['n'] = part
     st['win_next'] = not want_win
     if slot is not None:
