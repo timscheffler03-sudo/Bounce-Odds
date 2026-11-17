@@ -95,9 +95,11 @@ def main():
             "100% computed physics – every run is different.\n#physics #simulation #satisfying #bouncingballs")
     json.dump({'title': title, 'description': desc, 'info': info}, open(out + '.json', 'w'), indent=1)
     if env('DRY_RUN') == '1':
+        if 'tiktok' in (env('PLATFORMS') or ''):
+            tiktok_version(out, info)
         log('Testlauf – nicht gepostet:', out)
         return
-    post(out, title, desc)
+    post(out, title, desc, info)
     st['i'] += 1
     st['recent'] = (recent + [mode])[-6:]
     st['n'] = part
@@ -108,12 +110,66 @@ def main():
     json.dump(st, open(STATE, 'w'), indent=1)
 
 
-def post(file, title, desc):
+TT_MIN = 61.5  # TikTok Creator Rewards zählt nur Videos über 1 Minute
+FONT_FILE = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+
+
+def duration(file):
+    import subprocess
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file],
+                       capture_output=True, text=True, check=True)
+    return float(r.stdout.strip())
+
+
+def tiktok_version(file, info):
+    """Hängt eine Zeitlupen-Wiederholung des entscheidenden Moments an, bis das Video über 1 Minute lang ist.
+    Liefert den Dateinamen der TikTok-Fassung (oder das Original, wenn es schon lang genug ist / etwas schiefgeht)."""
+    import subprocess
+    secs = duration(file)
+    if secs >= TT_MIN:
+        return file
+    decisive = max(1.0, secs - 3.4)            # Moment, in dem das Ergebnis feststeht (danach 3,4 s Abspann)
+    end = min(secs, decisive + 1.0)            # inkl. 1 s Ergebnis-Einblendung
+    need = TT_MIN - secs + 0.5                 # so viel Zeitlupe fehlt noch
+    start = max(0.0, end - need / 2)           # 0,5x Tempo -> doppelte Länge
+    label = "drawtext=fontfile=%s:text='REPLAY  0.5x':x=(w-tw)/2:y=h*0.06:fontsize=84:fontcolor=white:borderw=7:bordercolor=black," % FONT_FILE \
+        if os.path.exists(FONT_FILE) else ''
+    fc = (f"[0:v]trim=start={start:.2f}:end={end:.2f},setpts=2*(PTS-STARTPTS),{label}format=yuv420p[rv];"
+          f"[0:a]atrim=start={start:.2f}:end={end:.2f},asetpts=PTS-STARTPTS,atempo=0.5[ra];"
+          f"[0:v]format=yuv420p[ov];[ov][0:a][rv][ra]concat=n=2:v=1:a=1[v][a]")
+    out = file.replace('.mp4', '-tiktok.mp4')
+    try:
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', file, '-filter_complex', fc, '-map', '[v]', '-map', '[a]',
+                        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', out], check=True)
+        d = duration(out)
+        log(f'TikTok-Fassung: {secs:.1f}s -> {d:.1f}s (Zeitlupe {start:.1f}-{end:.1f}s)')
+        if d < 60.5:
+            log('TikTok-Fassung noch unter 1 Minute – nehme trotzdem die längere Fassung')
+        return out
+    except Exception as e:
+        log('TikTok-Fassung fehlgeschlagen, poste Original:', e)
+        return file
+
+
+def post(file, title, desc, info=None):
+    plats = [p.strip() for p in (env('PLATFORMS') or 'youtube').split(',') if p.strip()]
+    if 'tiktok' in plats:
+        tt_file = tiktok_version(file, info)
+        if tt_file != file:
+            # Zwei Uploads: YouTube bekommt das kurze Original, TikTok die Fassung über 1 Minute
+            others = [p for p in plats if p != 'tiktok']
+            if others:
+                upload(file, title, desc, others)
+            upload(tt_file, title, desc, ['tiktok'])
+            return
+    upload(file, title, desc, plats)
+
+
+def upload(file, title, desc, plats):
     import requests
     key = env('UPLOAD_POST_API_KEY')
     if not key:
         sys.exit('UPLOAD_POST_API_KEY fehlt')
-    plats = [p.strip() for p in (env('PLATFORMS') or 'youtube').split(',') if p.strip()]
     data = [('user', env('UPLOAD_POST_USER') or 'bounceodds'), ('title', title), ('youtube_title', title[:100]),
             ('youtube_description', desc), ('categoryId', '28'), ('privacyStatus', 'public'),
             ('defaultLanguage', 'en'), ('defaultAudioLanguage', 'en'), ('containsSyntheticMedia', 'false'),
