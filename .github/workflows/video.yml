@@ -1,0 +1,58 @@
+name: Bounce Odds – Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: 'Nur testen, nicht posten'
+        type: boolean
+        default: true
+      auto:
+        description: 'Nur posten, wenn ein Slot fällig ist (für den stündlichen Wecker)'
+        type: boolean
+        default: false
+      mode:
+        description: 'Modus erzwingen (leer = Rotation): ring, rings, plinko, versus, hexagon, cup'
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bounce
+  cancel-in-progress: false
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libcairo2-dev pkg-config fonts-dejavu-core
+      - run: pip install -r requirements.txt
+      - name: Video erzeugen und posten
+        env:
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          UPLOAD_POST_USER: ${{ vars.UPLOAD_POST_USER }}
+          PLATFORMS: ${{ vars.PLATFORMS }}
+          SLOTS: ${{ vars.SLOTS }}
+          AUTO: ${{ inputs.auto && '1' || '0' }}
+          DRY_RUN: ${{ (inputs.dry && !inputs.auto) && '1' || '0' }}
+          MODE: ${{ inputs.mode }}
+        run: python make.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video
+          path: bounce-*.mp4*
+          if-no-files-found: ignore
+      - name: Stand speichern
+        if: success()
+        run: |
+          git config user.name "bounce-bot"; git config user.email "bot@users.noreply.github.com"
+          git add state.json 2>/dev/null || true
+          git diff --cached --quiet || (git commit -m "state" && git push)
