@@ -472,6 +472,19 @@ class VersusMode(Mode):
                     w.cool[i] = 0.9; w.cool[j] = 0.9; self.ev('pop', w.x[i])
         w.hit[:n] = 0
         n = w.n
+        # Kein Kreisen am Rand: Bälle, die am Rand entlang gleiten, werden zurück nach innen gelenkt
+        dx, dy = w.x[:n] - CX, w.y[:n] - CY
+        d = np.hypot(dx, dy) + 1e-9
+        nx, ny = dx / d, dy / d
+        vn = w.vx[:n] * nx + w.vy[:n] * ny
+        sp = np.hypot(w.vx[:n], w.vy[:n]) + 1e-9
+        slide = (d > self.R - 45) & (np.abs(vn) / sp < 0.45)
+        if slide.any():
+            ang = np.array([self.rng.uniform(-0.6, 0.6) for _ in range(int(slide.sum()))])
+            bx, by = -nx[slide], -ny[slide]
+            c, si = np.cos(ang), np.sin(ang)
+            w.vx[:n][slide] = (bx * c - by * si) * sp[slide]
+            w.vy[:n][slide] = (bx * si + by * c) * sp[slide]
         t = len(self.hist) / FPS
         if t > 4.0 and n >= 40: self.armed = True
         for sx, sy, sr in (self.saw_pos(t) if getattr(self, 'armed', False) else []):
@@ -811,6 +824,7 @@ def run(mode_name, seed, out=None, dry=False):
     end_frame = None
     confetti = None
     bg = rng.choice(BGS)
+    arng = random.Random(seed + 7)   # eigener Zufall für Ton/Konfetti, damit die Physik exakt wie im Probelauf bleibt
     audio = np.zeros(int((mode.maxdur + 5) * SR)) if not dry else None
     ff = surf = ctx = None
     if not dry:
@@ -847,7 +861,7 @@ def run(mode_name, seed, out=None, dry=False):
                     mix(audio, burst(seed=seed), t); mix(audio, burst(seed=seed + 1), t + 0.03)
                     mix(audio, horn(370, 0.16), t + 0.05)
                     mix(audio, horn(440, 0.75), t + 0.28)
-                    confetti = Confetti(rng, mode.win_colors())
+                    confetti = Confetti(arng, mode.win_colors())
                 else:
                     for k, f in enumerate([392, 370, 349, 262]):
                         mix(audio, tone(f, 0.45 if k == 3 else 0.3, 5, 0.3), t + k * 0.28)
@@ -856,7 +870,7 @@ def run(mode_name, seed, out=None, dry=False):
             if end_frame is None:   # nach dem Ende: Spielgeräusche aus
                 pops = [e for e in mode.events if e[0] == 'pop']
                 cnt = getattr(mode, 'count', w.n)
-                if pops and (len(pops) <= 2 or rng.random() < 0.55):
+                if pops and (len(pops) <= 2 or arng.random() < 0.55):
                     for k, (_, xv) in enumerate(pops[:2]):
                         f = 380 + 220 * min(1.0, math.log(max(cnt, 1) + 1) / 7) + 60 * ((xv - CX) / 540)
                         mix(audio, tone(f, 0.06, 70, 0.22 / (1 + cnt / 250), 0.1), t + k * 0.012)
