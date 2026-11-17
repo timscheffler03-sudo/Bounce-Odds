@@ -1,6 +1,10 @@
 {
- "i": 1,
- "n": 1,
- "win_next": false,
- "posted": {}
+ "i": 2,
+ "n": 2,
+ "win_next": true,
+ "posted": {
+  "2026-11-17": [
+   13
+  ]
+ }
 }
