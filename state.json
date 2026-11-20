@@ -1,7 +1,7 @@
 {
- "i": 8,
- "n": 8,
- "win_next": true,
+ "i": 9,
+ "n": 9,
+ "win_next": false,
  "posted": {
   "2026-11-17": [
    13,
@@ -16,15 +16,16 @@
    19
   ],
   "2026-11-20": [
-   13
+   13,
+   19
   ]
  },
  "recent": [
-  "rings",
   "hexagon",
   "plinko",
   "ring",
   "cup",
-  "hexagon"
+  "hexagon",
+  "versus"
  ]
 }
